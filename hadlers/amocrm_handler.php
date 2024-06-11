@@ -19,33 +19,47 @@ function writeLog($message) {
     file_put_contents($logFile, "[$date] $message\n", FILE_APPEND);
 }
 
-// Получаем все переменные из POST-запроса
-$postData = $_POST;
-$contactName = $postData['name'] ?? ''; // Имя контакта
-$phone = $postData['phone'] ?? '';
-$email = $postData['email'] ?? '';
-$visitor_uid = $postData['visitor_uid'] ?? '';
-$utm_content = $postData['utm_content'] ?? '';
-$utm_medium = $postData['utm_medium'] ?? '';
-$utm_campaign = $postData['utm_campaign'] ?? '';
-$utm_source = $postData['utm_source'] ?? '';
-$utm_term = $postData['utm_term'] ?? '';
-$utm_referrer = $postData['utm_referrer'] ?? '';
-$roistat = $postData['roistat'] ?? '';
-$referrer = $postData['referrer'] ?? '';
-$openstat_service = $postData['openstat_service'] ?? '';
-$openstat_campaign = $postData['openstat_campaign'] ?? '';
-$openstat_ad = $postData['openstat_ad'] ?? '';
-$openstat_source = $postData['openstat_source'] ?? '';
-$gclientid = $postData['gclientid'] ?? '';
-$ym_uid = $postData['_ym_uid'] ?? '';
-$ym_counter = $postData['_ym_counter'] ?? '';
-$gclid = $postData['gclid'] ?? '';
-$yclid = $postData['yclid'] ?? '';
-$fbclid = $postData['fbclid'] ?? '';
-$rb_clickid = $postData['rb_clickid'] ?? '';
-$from = $postData['from'] ?? '';
+// Функция для получения значения куки
+function getCookie($name, $cookieString) {
+    // Парсим строку кук
+    $cookies = explode('; ', $cookieString);
+    foreach ($cookies as $cookie) {
+        list($cookieName, $cookieValue) = explode('=', $cookie, 2);
+        if ($cookieName == $name) {
+            return urldecode($cookieValue);
+        }
+    }
+    return '';
+}
 
+// Получаем все переменные из POST-запроса и куки
+$postData = $_POST;
+$cookieString = $postData['COOKIES'] ?? '';
+$contactName = $postData['name'] ?? getCookie('name', $cookieString); // Имя контакта
+$phone = $postData['phone'] ?? getCookie('phone', $cookieString);
+$email = $postData['email'] ?? getCookie('email', $cookieString);
+$visitor_uid = $postData['visitor_uid'] ?? getCookie('visitor_uid', $cookieString);
+$visitor_id = $postData['visitor_id'] ?? getCookie('visitor_id', $cookieString);
+$utm_content = $postData['utm_content'] ?? getCookie('utm_content', $cookieString);
+$utm_medium = $postData['utm_medium'] ?? getCookie('utm_medium', $cookieString);
+$utm_campaign = $postData['utm_campaign'] ?? getCookie('utm_campaign', $cookieString);
+$utm_source = $postData['utm_source'] ?? getCookie('utm_source', $cookieString);
+$utm_term = $postData['utm_term'] ?? getCookie('utm_term', $cookieString);
+$utm_referrer = $postData['utm_referrer'] ?? getCookie('utm_referrer', $cookieString);
+$roistat = $postData['roistat'] ?? getCookie('roistat', $cookieString);
+$referrer = $postData['referrer'] ?? getCookie('referrer', $cookieString);
+$openstat_service = $postData['openstat_service'] ?? getCookie('openstat_service', $cookieString);
+$openstat_campaign = $postData['openstat_campaign'] ?? getCookie('openstat_campaign', $cookieString);
+$openstat_ad = $postData['openstat_ad'] ?? getCookie('openstat_ad', $cookieString);
+$openstat_source = $postData['openstat_source'] ?? getCookie('openstat_source', $cookieString);
+$gclientid = $postData['gclientid'] ?? getCookie('gclientid', $cookieString);
+$ym_uid = $postData['_ym_uid'] ?? getCookie('_ym_uid', $cookieString);
+$ym_counter = $postData['_ym_counter'] ?? getCookie('_ym_counter', $cookieString);
+$gclid = $postData['gclid'] ?? getCookie('gclid', $cookieString);
+$yclid = $postData['yclid'] ?? getCookie('yclid', $cookieString);
+$fbclid = $postData['fbclid'] ?? getCookie('fbclid', $cookieString);
+$rb_clickid = $postData['rb_clickid'] ?? getCookie('rb_clickid', $cookieString);
+$from = $postData['from'] ?? getCookie('from', $cookieString);
 // Функция для выполнения запросов к amoCRM
 function amoCrmRequest($method, $url, $data = null) {
     global $subdomain, $accessToken;
@@ -69,42 +83,41 @@ function amoCrmRequest($method, $url, $data = null) {
     
     curl_close($curl);
     
+    writeLog("Response: $response");
+    
     if ($responseCode >= 400) {
         writeLog("Error: $response");
         throw new Exception("Error: $response");
     }
     
-    writeLog("Response: $response");
     return json_decode($response, true);
 }
 
-// Функция для форматирования номера телефона
-function formatPhoneNumber($phone) {
-    $phone = preg_replace('/\D/', '', $phone);
-    $formats = [
-        $phone,
-        '7' . substr($phone, -10),
-        '8' . substr($phone, -10),
-        '+7' . substr($phone, -10),
-        '+8' . substr($phone, -10)
-    ];
-    return $formats;
+// Функция для нормализации номера телефона
+function normalizePhoneNumber($phone) {
+    // Удаляем все символы, кроме цифр
+    $phone = preg_replace('/\\D/', '', $phone);
+    
+    // Преобразуем номер к формату +7 123 456-78-90
+    $normalizedPhone = '+7 ' . substr($phone, -10, 3) . ' ' . substr($phone, -7, 3) . '-' . substr($phone, -4, 2) . '-' . substr($phone, -2);
+    
+    return $normalizedPhone;
 }
+
 // Поиск контакта по номеру телефона
 function findContactByPhone($phone) {
-    $phoneFormats = formatPhoneNumber($phone);
+    $normalizedPhone = normalizePhoneNumber($phone);
     
-    foreach ($phoneFormats as $formattedPhone) {
-        try {
-            $response = amoCrmRequest('GET', "contacts?query=$formattedPhone");
-            if (!empty($response['_embedded']['contacts'])) {
-                writeLog("Contact found by phone: $formattedPhone");
-                return $response['_embedded']['contacts'][0];
-            }
-        } catch (Exception $e) {
-            // Логируем ошибки
-            writeLog($e->getMessage());
+    try {
+        // Выполняем запрос к amoCRM для поиска контакта
+        $response = amoCrmRequest('GET', "contacts?query=$normalizedPhone");
+        if (!empty($response['_embedded']['contacts'])) {
+            writeLog("Contact found by phone: $normalizedPhone");
+            return $response['_embedded']['contacts'][0];
         }
+    } catch (Exception $e) {
+        // Логируем ошибки
+        writeLog($e->getMessage());
     }
     
     writeLog("No contact found by phone: $phone");
@@ -184,15 +197,21 @@ try {
         'name' => $contactName,
         'custom_fields_values' => [
             [
-                'field_id' => 123456, // Замените на реальный ID поля для телефона
+                'field_id' => 92667, // ID поля для телефона
                 'values' => [
-                    ['value' => $phone]
+                    ['value' => normalizePhoneNumber($phone)]
                 ]
             ],
             [
-                'field_id' => 123457, // Замените на реальный ID поля для email
+                'field_id' => 92669, // ID поля для email
                 'values' => [
                     ['value' => $email]
+                ]
+            ],
+            [
+                'field_id' => 969159, // ID поля visitor_id
+                'values' => [
+                    ['value' => $visitor_id]
                 ]
             ]
         ]
@@ -200,187 +219,187 @@ try {
 
     // Данные для создания сделки
     $dealData = [
-        'name' => 'New Deal',
+        'name' => "Новый лид #123456",
         'status_id' => 142, // Укажите нужный статус сделки
+        'visitor_uid' => $visitor_uid, // Добавляем visitor_uid
         'custom_fields_values' => [
             [
-                'field_id' => 967291, // ID поля utm_content
-                'values' => [
-                    ['value' => $utm_content]
-                ]
-            ],
-            [
-                'field_id' => 967293, // ID поля utm_medium
-                'values' => [
-                    ['value' => $utm_medium]
-                ]
-            ],
-            [
-                'field_id' => 967295, // ID поля utm_campaign
-                'values' => [
-                    ['value' => $utm_campaign]
-                ]
-            ],
-            [
-                'field_id' => 967297, // ID поля utm_source
-                'values' => [
-                    ['value' => $utm_source]
-                ]
-            ],
-            [
-                'field_id' => 967299, // ID поля utm_term
-                'values' => [
-                    ['value' => $utm_term]
-                ]
-            ],
-            [
-                'field_id' => 967301, // ID поля utm_referrer
-                'values' => [
-                    ['value' => $utm_referrer]
-                ]
-            ],
-            [
-                'field_id' => 967303, // ID поля roistat
-                'values' => [
-                    ['value' => $roistat]
-                ]
-            ],
-            [
-                'field_id' => 967305, // ID поля referrer
-                'values' => [
-                    ['value' => $referrer]
-                ]
-            ],
-            [
-                'field_id' => 967307, // ID поля openstat_service
-                'values' => [
-                    ['value' => $openstat_service]
-                ]
-            ],
-            [
-                'field_id' => 967309, // ID поля openstat_campaign
-                'values' => [
-                    ['value' => $openstat_campaign]
-                ]
-            ],
-            [
-                'field_id' => 967311, // ID поля openstat_ad
-                'values' => [
-                    ['value' => $openstat_ad]
-                ]
-            ],
-            [
-                'field_id' => 967313, // ID поля openstat_source
-                'values' => [
-                    ['value' => $openstat_source]
-                ]
-            ],
-            [
-                'field_id' => 967315, // ID поля gclientid
-                'values' => [
-                    ['value' => $gclientid]
-                ]
-            ],
-            [
-                'field_id' => 967317, // ID поля _ym_uid
+                'field_id' => 92703, // ID поля _ym_uid
                 'values' => [
                     ['value' => $ym_uid]
                 ]
             ],
             [
-                'field_id' => 967319, // ID поля _ym_counter
+                'field_id' => 92705, // ID поля _ym_counter
                 'values' => [
                     ['value' => $ym_counter]
                 ]
             ],
             [
-                'field_id' => 967321, // ID поля gclid
+                'field_id' => 92701, // ID поля gclientid
+                'values' => [
+                    ['value' => $gclientid]
+                ]
+            ],
+            [
+                'field_id' => 92689, // ID поля referrer
+                'values' => [
+                    ['value' => $referrer]
+                ]
+            ],
+            [
+                'field_id' => 92687, // ID поля roistat
+                'values' => [
+                    ['value' => $roistat]
+                ]
+            ],
+            [
+                'field_id' => 92675, // ID поля utm_content
+                'values' => [
+                    ['value' => $utm_content]
+                ]
+            ],
+            [
+                'field_id' => 92677, // ID поля utm_medium
+                'values' => [
+                    ['value' => $utm_medium]
+                ]
+            ],
+            [
+                'field_id' => 92679, // ID поля utm_campaign
+                'values' => [
+                    ['value' => $utm_campaign]
+                ]
+            ],
+            [
+                'field_id' => 92681, // ID поля utm_source
+                'values' => [
+                    ['value' => $utm_source]
+                ]
+            ],
+            [
+                'field_id' => 92683, // ID поля utm_term
+                'values' => [
+                    ['value' => $utm_term]
+                ]
+            ],
+            [
+                'field_id' => 92685, // ID поля utm_referrer
+                'values' => [
+                    ['value' => $utm_referrer]
+                ]
+            ],
+            [
+                'field_id' => 92691, // ID поля openstat_service
+                'values' => [
+                    ['value' => $openstat_service]
+                ]
+            ],
+            [
+                'field_id' => 92693, // ID поля openstat_campaign
+                'values' => [
+                    ['value' => $openstat_campaign]
+                ]
+            ],
+            [
+                'field_id' => 92695, // ID поля openstat_ad
+                'values' => [
+                    ['value' => $openstat_ad]
+                ]
+            ],
+            [
+                'field_id' => 92697, // ID поля openstat_source
+                'values' => [
+                    ['value' => $openstat_source]
+                ]
+            ],
+            [
+                'field_id' => 92707, // ID поля gclid
                 'values' => [
                     ['value' => $gclid]
                 ]
             ],
             [
-                'field_id' => 967323, // ID поля yclid
+                'field_id' => 92709, // ID поля yclid
                 'values' => [
                     ['value' => $yclid]
                 ]
             ],
             [
-                'field_id' => 967325, // ID поля fbclid
+                'field_id' => 92711, // ID поля fbclid
                 'values' => [
                     ['value' => $fbclid]
                 ]
             ],
             [
-                'field_id' => 967327, // ID поля rb_clickid
+                'field_id' => 973191, // ID поля rb_clickid
                 'values' => [
                     ['value' => $rb_clickid]
                 ]
             ],
             [
-                'field_id' => 967329, // ID поля from
+                'field_id' => 92699, // ID поля from
                 'values' => [
                     ['value' => $from]
+                ]
+            ],
+            [
+                'field_id' => 971549, // ID поля tranid
+                'values' => [
+                    ['value' => $tranid]
+                ]
+            ],
+            [
+                'field_id' => 971551, // ID поля formid
+                'values' => [
+                    ['value' => $formid]
+                ]
+            ],
+            [
+                'field_id' => 973309, // ID поля formname
+                'values' => [
+                    ['value' => $formname]
                 ]
             ]
         ]
     ];
-
-?>
+    // Если контакт найден, обновляем его данными
     if ($contact) {
-        // Дополняем контакт данными из запроса, если они не заполнены
+        // Проверяем и добавляем отсутствующие данные
         if (empty($contact['custom_fields_values'])) {
             $contactUpdateData['custom_fields_values'] = $contactCreateData['custom_fields_values'];
-        }
-
-        // Обновляем контакт
-        updateContact($contact['id'], $contactUpdateData);
-
-        // Создаем сделку и связываем с контактом
-        $dealData['contacts_id'] = [$contact['id']];
-        $newDeal = createDeal($dealData);
-
-        if ($newDeal) {
-            $dealId = $newDeal['id'];
-            $dealName = "Новый лид #$dealId";
-            updateDealName($dealId, $dealName);
-        }
-
-    } else {
-        // Создаем новый контакт и сделку
-        $newContact = createContact($contactCreateData);
-
-        if ($newContact) {
-            $dealData['contacts_id'] = [$newContact['id']];
-            $newDeal = createDeal($dealData);
-
-            if ($newDeal) {
-                $dealId = $newDeal['id'];
-                $dealName = "Новый лид #$dealId";
-                updateDealName($dealId, $dealName);
+        } else {
+            foreach ($contactCreateData['custom_fields_values'] as $newField) {
+                $fieldFound = false;
+                foreach ($contact['custom_fields_values'] as &$existingField) {
+                    if ($existingField['field_id'] == $newField['field_id']) {
+                        $fieldFound = true;
+                        break;
+                    }
+                }
+                if (!$fieldFound) {
+                    $contactUpdateData['custom_fields_values'][] = $newField;
+                }
             }
         }
+        updateContact($contact['id'], $contactUpdateData);
+        $contactId = $contact['id'];
+    } else {
+        // Если контакт не найден, создаем новый контакт
+        $newContact = createContact($contactCreateData);
+        $contactId = $newContact['id'];
     }
 
-    writeLog("Script executed successfully");
-    echo "Success";
-
+    // Связываем сделку с контактом
+    $dealData['contacts_id'] = [$contactId];
+    createDeal($dealData);
+    
 } catch (Exception $e) {
-    writeLog("Exception: " . $e->getMessage());
-    echo "Error: " . $e->getMessage();
+    // Логируем ошибки
+    writeLog($e->getMessage());
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    exit;
 }
 
-// Функция для обновления имени сделки
-function updateDealName($dealId, $dealName) {
-    $data = [
-        'name' => $dealName
-    ];
-    try {
-        amoCrmRequest('PATCH', "leads/$dealId", $data);
-        writeLog("Deal name updated: $dealName");
-    } catch (Exception $e) {
-        writeLog($e->getMessage());
-    }
-}
-
+echo json_encode(['status' => 'success', 'message' => 'Данные успешно обработаны']);
 ?>
