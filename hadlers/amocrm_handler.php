@@ -44,7 +44,6 @@ $price = isset($postData['price']) ? (float)$postData['price'] : (float)getCooki
 $visitor_uid = isset($postData['visitor_uid']) ? $postData['visitor_uid'] : getCookie('visitor_uid', $cookieString);
 $visitor_id = isset($postData['visitor_id']) ? (int)$postData['visitor_id'] : (int)getCookie('visitor_id', $cookieString);
 $note = isset($postData['note']) ? $postData['note'] : getCookie('note', $cookieString);
-
 $utm_content = $postData['utm_content'] ?? getCookie('utm_content', $cookieString);
 $utm_medium = $postData['utm_medium'] ?? getCookie('utm_medium', $cookieString);
 $utm_campaign = $postData['utm_campaign'] ?? getCookie('utm_campaign', $cookieString);
@@ -105,8 +104,8 @@ function normalizePhoneNumber($phone) {
     // Удаляем все символы, кроме цифр
     $phone = preg_replace('/\\D/', '', $phone);
     
-    // Преобразуем номер к формату +7 123 456-78-90
-    $normalizedPhone = '+7 ' . substr($phone, -10, 3) . ' ' . substr($phone, -7, 3) . '-' . substr($phone, -4, 2) . '-' . substr($phone, -2);
+    // Преобразуем номер к формату +71234567890
+    $normalizedPhone = '+7' . substr($phone, -10);
     
     return $normalizedPhone;
 }
@@ -140,7 +139,6 @@ function findContactByEmail($email) {
     
     return null;
 }
-
 // Создание нового контакта
 function createContact($data) {
     try {
@@ -151,6 +149,7 @@ function createContact($data) {
         return null;
     }
 }
+
 // Обновление контакта
 function updateContact($contactId, $data) {
     try {
@@ -220,19 +219,6 @@ function createNoteForDeal($dealId, $note) {
 }
 // Основная логика
 try {
-    // Получение данных из POST-запроса
-    $postData = $_POST;
-    $name = $postData['name'] ?? '';
-    $phone = $postData['phone'] ?? '';
-    $email = $postData['email'] ?? '';
-    $statusId = isset($postData['status_id']) ? (int)$postData['status_id'] : (int)getCookie('status_id', $cookieString);
-    $pipelineId = isset($postData['pipeline_id']) ? (int)$postData['pipeline_id'] : (int)getCookie('pipeline_id', $cookieString);
-    $leadName = isset($postData['lead_name']) ? $postData['lead_name'] : getCookie('lead_name', $cookieString);
-    $price = isset($postData['price']) ? (float)$postData['price'] : (float)getCookie('price', $cookieString);
-    $visitorUid = isset($postData['visitor_uid']) ? $postData['visitor_uid'] : getCookie('visitor_uid', $cookieString);
-    $visitorId = isset($postData['visitor_id']) ? (int)$postData['visitor_id'] : (int)getCookie('visitor_id', $cookieString);
-    $note = isset($postData['note']) ? $postData['note'] : getCookie('note', $cookieString);
-
     // Проверка наличия обязательных данных
     if (empty($phone) && empty($email)) {
         writeLog("Error: Neither phone nor email is provided.");
@@ -264,7 +250,7 @@ try {
                 break;
             }
         }
-        if (!$visitorIdFieldFound) {
+        if (!$visitorIdFieldFound && !empty($visitorId)) {
             $contact['custom_fields_values'][] = [
                 'field_id' => 969159,
                 'values' => [
@@ -307,13 +293,24 @@ try {
     }
     // Данные для создания сделки
     $dealData = [
-        'name' => $leadName,
-        'status_id' => $statusId,
-        'pipeline_id' => $pipelineId,
-        'price' => $price,
-        'visitor_uid' => $visitorUid,
         'custom_fields_values' => []
     ];
+
+    if (!empty($leadName)) {
+        $dealData['name'] = $leadName;
+    }
+    if (!empty($statusId)) {
+        $dealData['status_id'] = $statusId;
+    }
+    if (!empty($pipelineId)) {
+        $dealData['pipeline_id'] = $pipelineId;
+    }
+    if (!empty($price)) {
+        $dealData['price'] = $price;
+    }
+    if (!empty($visitorUid)) {
+        $dealData['visitor_uid'] = $visitorUid;
+    }
 
     // Добавляем кастомные поля, если они есть
     $customFields = [
@@ -352,6 +349,7 @@ try {
             ];
         }
     }
+
     // Создаем сделку с привязкой к контакту
     $deal = createDealWithContact($contactId, $dealData);
 
