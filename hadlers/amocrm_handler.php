@@ -34,7 +34,7 @@ function getCookie($name, $cookieString) {
 // Получаем все переменные из POST-запроса и куки
 $postData = $_POST;
 $cookieString = $postData['COOKIES'] ?? '';
-$contactName = $postData['name'] ?? getCookie('name', $cookieString);
+$name = $postData['name'] ?? getCookie('name', $cookieString);
 $phone = $postData['phone'] ?? getCookie('phone', $cookieString);
 $email = $postData['email'] ?? getCookie('email', $cookieString);
 $status_id = isset($postData['status_id']) ? (int)$postData['status_id'] : (int)getCookie('status_id', $cookieString);
@@ -222,7 +222,7 @@ function createNoteForDeal($dealId, $note) {
 try {
     // Получение данных из POST-запроса
     $postData = $_POST;
-    $contactName = $postData['name'] ?? '';
+    $name = $postData['name'] ?? '';
     $phone = $postData['phone'] ?? '';
     $email = $postData['email'] ?? '';
     $statusId = isset($postData['status_id']) ? (int)$postData['status_id'] : (int)getCookie('status_id', $cookieString);
@@ -275,7 +275,7 @@ try {
         updateContact($contactId, $contact);
     } else {
         $contactData = [
-            'name' => $contactName,
+            'name' => $name,
             'custom_fields_values' => []
         ];
         if (!empty($phone)) {
