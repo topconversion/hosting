@@ -18,7 +18,6 @@ function writeLog($message) {
     $date = date('Y-m-d H:i:s');
     file_put_contents($logFile, "[$date] $message\n", FILE_APPEND);
 }
-
 // Функция для получения значения куки
 function getCookie($name, $cookieString) {
     // Парсим строку кук
@@ -31,6 +30,7 @@ function getCookie($name, $cookieString) {
     }
     return '';
 }
+
 // Получаем все переменные из POST-запроса и куки
 $postData = $_POST;
 $cookieString = $postData['COOKIES'] ?? '';
@@ -106,7 +106,6 @@ function normalizePhoneNumber($phone) {
     
     return $normalizedPhone;
 }
-
 // Поиск контакта по номеру телефона
 function findContactByPhone($phone) {
     $normalizedPhone = normalizePhoneNumber($phone);
@@ -126,6 +125,7 @@ function findContactByPhone($phone) {
     writeLog("No contact found by phone: $phone");
     return null;
 }
+
 // Поиск контакта по email
 function findContactByEmail($email) {
     try {
@@ -142,7 +142,6 @@ function findContactByEmail($email) {
     writeLog("No contact found by email: $email");
     return null;
 }
-
 // Создание нового контакта
 function createContact($data) {
     try {
@@ -156,21 +155,15 @@ function createContact($data) {
     }
 }
 
-// Обновление контакта
-function updateContact($id, $data) {
+// Создание сделки с привязкой к контакту
+function createDealWithContact($contactId, $dealData) {
+    $dealData['_embedded'] = [
+        'contacts' => [
+            ['id' => $contactId]
+        ]
+    ];
     try {
-        amoCrmRequest('PATCH', "contacts/$id", $data);
-        writeLog("Contact updated: $id");
-    } catch (Exception $e) {
-        // Логируем ошибки
-        writeLog($e->getMessage());
-    }
-}
-
-// Создание сделки
-function createDeal($data) {
-    try {
-        $response = amoCrmRequest('POST', 'leads', [$data]);
+        $response = amoCrmRequest('POST', 'leads/complex', [$dealData]);
         writeLog("Deal created: " . json_encode($response));
         return $response['_embedded']['leads'][0];
     } catch (Exception $e) {
@@ -181,84 +174,48 @@ function createDeal($data) {
 }
 // Основная логика
 try {
-    // Ищем контакт по номеру телефона
+    // Получение данных из POST-запроса
+    $postData = $_POST;
+    $contactName = $postData['name'] ?? '';
+    $phone = $postData['phone'] ?? '';
+    $email = $postData['email'] ?? '';
+    $statusId = 65419714; // ID статуса сделки
+
+    // Ищем контакт по номеру телефона или email
     $contact = findContactByPhone($phone);
-    
-    // Если контакт не найден по номеру телефона, ищем по email
     if (!$contact && $email) {
         $contact = findContactByEmail($email);
     }
     
-    // Данные для обновления контакта
-    $contactUpdateData = [
-        'name' => $contactName,
-        'custom_fields_values' => []
-    ];
-
-    // Данные для создания контакта
-    $contactCreateData = [
-        'name' => $contactName,
-        'custom_fields_values' => [
-            [
-                'field_id' => 92667, // ID поля для телефона
-                'values' => [
-                    ['value' => normalizePhoneNumber($phone), 'enum_id' => 47399]
-                ]
-            ],
-            [
-                'field_id' => 92669, // ID поля для email
-                'values' => [
-                    ['value' => $email, 'enum_id' => 47411]
-                ]
-            ],
-            [
-                'field_id' => 969159, // ID поля visitor_id
-                'values' => [
-                    ['value' => (int)$visitor_id]
-                ]
-            ]
-        ]
-    ];
-
-    // Если есть согласие на обработку персональных данных
-    if ($privacyPolicyAgreement === 'yes') {
-        $contactCreateData['custom_fields_values'][] = [
-            'field_id' => 966977, // ID поля для согласия на обработку персональных данных
-            'values' => [
-                ['value' => true]
-            ]
-        ];
-    }
-    // Если контакт найден, обновляем его данными
+    // Если контакт найден, используем его ID, иначе создаем новый контакт
     if ($contact) {
-        // Проверяем и добавляем отсутствующие данные
-        if (empty($contact['custom_fields_values'])) {
-            $contactUpdateData['custom_fields_values'] = $contactCreateData['custom_fields_values'];
-        } else {
-            foreach ($contactCreateData['custom_fields_values'] as $newField) {
-                $fieldFound = false;
-                foreach ($contact['custom_fields_values'] as &$existingField) {
-                    if ($existingField['field_id'] == $newField['field_id']) {
-                        $fieldFound = true;
-                        break;
-                    }
-                }
-                if (!$fieldFound) {
-                    $contactUpdateData['custom_fields_values'][] = $newField;
-                }
-            }
-        }
-        updateContact($contact['id'], $contactUpdateData);
         $contactId = $contact['id'];
     } else {
-        // Если контакт не найден, создаем новый контакт
-        $newContact = createContact($contactCreateData);
+        $contactData = [
+            'name' => $contactName,
+            'custom_fields_values' => [
+                [
+                    'field_id' => 92667, // ID поля для телефона
+                    'values' => [
+                        ['value' => $phone]
+                    ]
+                ],
+                [
+                    'field_id' => 92669, // ID поля для email
+                    'values' => [
+                        ['value' => $email]
+                    ]
+                ]
+            ]
+        ];
+        $newContact = createContact($contactData);
         $contactId = $newContact['id'];
     }
-
     // Данные для создания сделки
     $dealData = [
-        'status_id' => 65419714,
+        'name' => 'New Deal',
+        'status_id' => $statusId,
+        'price' => 3000, // Пример суммы сделки
         'custom_fields_values' => [
             [
                 'field_id' => 92703, // ID поля _ym_uid
@@ -400,37 +357,8 @@ try {
             ]
         ]
     ];
-
-    // Если контакт найден, обновляем его данными
-    if ($contact) {
-        // Проверяем и добавляем отсутствующие данные
-        if (empty($contact['custom_fields_values'])) {
-            $contactUpdateData['custom_fields_values'] = $contactCreateData['custom_fields_values'];
-        } else {
-            foreach ($contactCreateData['custom_fields_values'] as $newField) {
-                $fieldFound = false;
-                foreach ($contact['custom_fields_values'] as &$existingField) {
-                    if ($existingField['field_id'] == $newField['field_id']) {
-                        $fieldFound = true;
-                        break;
-                    }
-                }
-                if (!$fieldFound) {
-                    $contactUpdateData['custom_fields_values'][] = $newField;
-                }
-            }
-        }
-        updateContact($contact['id'], $contactUpdateData);
-        $contactId = $contact['id'];
-    } else {
-        // Если контакт не найден, создаем новый контакт
-        $newContact = createContact($contactCreateData);
-        $contactId = $newContact['id'];
-    }
-
-    // Связываем сделку с контактом
-    $dealData['contacts_id'] = [$contactId];
-    createDeal($dealData);
+    // Создаем сделку с привязкой к контакту
+    createDealWithContact($contactId, $dealData);
 
 } catch (Exception $e) {
     // Логируем ошибки
