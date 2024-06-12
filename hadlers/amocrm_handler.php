@@ -31,7 +31,6 @@ function getCookie($name, $cookieString) {
     }
     return '';
 }
-
 // Получаем все переменные из POST-запроса и куки
 $postData = $_POST;
 $cookieString = $postData['COOKIES'] ?? '';
@@ -60,6 +59,10 @@ $yclid = $postData['yclid'] ?? getCookie('yclid', $cookieString);
 $fbclid = $postData['fbclid'] ?? getCookie('fbclid', $cookieString);
 $rb_clickid = $postData['rb_clickid'] ?? getCookie('rb_clickid', $cookieString);
 $from = $postData['from'] ?? getCookie('from', $cookieString);
+$tranid = $postData['tranid'] ?? getCookie('tranid', $cookieString);
+$formid = $postData['formid'] ?? getCookie('formid', $cookieString);
+$formname = $postData['formname'] ?? getCookie('formname', $cookieString);
+$privacy_policy_agreement = isset($postData['privacy_policy_agreement']) && $postData['privacy_policy_agreement'] === 'yes';
 // Функция для выполнения запросов к amoCRM
 function amoCrmRequest($method, $url, $data = null) {
     global $subdomain, $accessToken;
@@ -123,7 +126,6 @@ function findContactByPhone($phone) {
     writeLog("No contact found by phone: $phone");
     return null;
 }
-
 // Поиск контакта по email
 function findContactByEmail($email) {
     try {
@@ -140,10 +142,11 @@ function findContactByEmail($email) {
     writeLog("No contact found by email: $email");
     return null;
 }
+
 // Создание нового контакта
 function createContact($data) {
     try {
-        $response = amoCrmRequest('POST', 'contacts', ['add' => [$data]]);
+        $response = amoCrmRequest('POST', 'contacts', [$data]);
         writeLog("Contact created: " . json_encode($response));
         return $response['_embedded']['contacts'][0];
     } catch (Exception $e) {
@@ -167,7 +170,7 @@ function updateContact($id, $data) {
 // Создание сделки
 function createDeal($data) {
     try {
-        $response = amoCrmRequest('POST', 'leads', ['add' => [$data]]);
+        $response = amoCrmRequest('POST', 'leads', [$data]);
         writeLog("Deal created: " . json_encode($response));
         return $response['_embedded']['leads'][0];
     } catch (Exception $e) {
@@ -199,29 +202,63 @@ try {
             [
                 'field_id' => 92667, // ID поля для телефона
                 'values' => [
-                    ['value' => normalizePhoneNumber($phone)]
+                    ['value' => normalizePhoneNumber($phone), 'enum_id' => 47399]
                 ]
             ],
             [
                 'field_id' => 92669, // ID поля для email
                 'values' => [
-                    ['value' => $email]
+                    ['value' => $email, 'enum_id' => 47411]
                 ]
             ],
             [
                 'field_id' => 969159, // ID поля visitor_id
                 'values' => [
-                    ['value' => $visitor_id]
+                    ['value' => (int)$visitor_id]
                 ]
             ]
         ]
     ];
 
+    // Если есть согласие на обработку персональных данных
+    if ($privacyPolicyAgreement === 'yes') {
+        $contactCreateData['custom_fields_values'][] = [
+            'field_id' => 966977, // ID поля для согласия на обработку персональных данных
+            'values' => [
+                ['value' => true]
+            ]
+        ];
+    }
+    // Если контакт найден, обновляем его данными
+    if ($contact) {
+        // Проверяем и добавляем отсутствующие данные
+        if (empty($contact['custom_fields_values'])) {
+            $contactUpdateData['custom_fields_values'] = $contactCreateData['custom_fields_values'];
+        } else {
+            foreach ($contactCreateData['custom_fields_values'] as $newField) {
+                $fieldFound = false;
+                foreach ($contact['custom_fields_values'] as &$existingField) {
+                    if ($existingField['field_id'] == $newField['field_id']) {
+                        $fieldFound = true;
+                        break;
+                    }
+                }
+                if (!$fieldFound) {
+                    $contactUpdateData['custom_fields_values'][] = $newField;
+                }
+            }
+        }
+        updateContact($contact['id'], $contactUpdateData);
+        $contactId = $contact['id'];
+    } else {
+        // Если контакт не найден, создаем новый контакт
+        $newContact = createContact($contactCreateData);
+        $contactId = $newContact['id'];
+    }
+
     // Данные для создания сделки
     $dealData = [
-        'name' => "Новый лид #123456",
-        'status_id' => 142, // Укажите нужный статус сделки
-        'visitor_uid' => $visitor_uid, // Добавляем visitor_uid
+        'status_id' => 65419714,
         'custom_fields_values' => [
             [
                 'field_id' => 92703, // ID поля _ym_uid
@@ -363,6 +400,7 @@ try {
             ]
         ]
     ];
+
     // Если контакт найден, обновляем его данными
     if ($contact) {
         // Проверяем и добавляем отсутствующие данные
@@ -393,7 +431,7 @@ try {
     // Связываем сделку с контактом
     $dealData['contacts_id'] = [$contactId];
     createDeal($dealData);
-    
+
 } catch (Exception $e) {
     // Логируем ошибки
     writeLog($e->getMessage());
